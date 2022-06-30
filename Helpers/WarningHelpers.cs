@@ -234,7 +234,7 @@
                 x => JsonConvert.DeserializeObject<UserWarning>(x.Value)
             );
 
-            var autoMuteResult = MuteHelpers.GetHoursToMuteFor(warningDictionary: warningsOutput, timeToCheck: TimeSpan.FromDays(Program.cfgjson.WarningDaysThreshold), autoMuteThresholds: Program.cfgjson.AutoMuteThresholds);
+            var autoMuteResult = PunishmentHelpers.GetHoursToMuteFor(warningDictionary: warningsOutput, timeToCheck: TimeSpan.FromDays(Program.cfgjson.WarningDaysThreshold), autoMuteThresholds: Program.cfgjson.AutoMuteThresholds);
 
             var acceptedThreshold = Program.cfgjson.WarningDaysThreshold;
             int toMuteHours = autoMuteResult.MuteHours;
@@ -243,7 +243,7 @@
 
             if (toMuteHours != -1 && Program.cfgjson.RecentWarningsPeriodHours != 0)
             {
-                var (MuteHours, WarnsSinceThreshold) = MuteHelpers.GetHoursToMuteFor(warningDictionary: warningsOutput, timeToCheck: TimeSpan.FromHours(Program.cfgjson.RecentWarningsPeriodHours), autoMuteThresholds: Program.cfgjson.RecentWarningsAutoMuteThresholds);
+                var (MuteHours, WarnsSinceThreshold) = PunishmentHelpers.GetHoursToMuteFor(warningDictionary: warningsOutput, timeToCheck: TimeSpan.FromHours(Program.cfgjson.RecentWarningsPeriodHours), autoMuteThresholds: Program.cfgjson.RecentWarningsAutoMuteThresholds);
                 if (MuteHours == -1 || MuteHours >= toMuteHours)
                 {
                     toMuteHours = MuteHours;
@@ -255,11 +255,11 @@
 
             if (toMuteHours > 0)
             {
-                await MuteHelpers.MuteUserAsync(targetUser, $"Automatic mute after {warnsSinceThreshold} warnings in the past {acceptedThreshold} {thresholdSpan}.", modUser.Id, guild, channel, TimeSpan.FromHours(toMuteHours));
+                await PunishmentHelpers.MuteUserAsync(targetUser, $"Automatic mute after {warnsSinceThreshold} warnings in the past {acceptedThreshold} {thresholdSpan}.", modUser.Id, guild, channel, TimeSpan.FromHours(toMuteHours));
             }
             else if (toMuteHours <= -1)
             {
-                await MuteHelpers.MuteUserAsync(targetUser, $"Automatic permanent mute after {warnsSinceThreshold} warnings in the past {acceptedThreshold} {thresholdSpan}.", modUser.Id, guild, channel);
+                await PunishmentHelpers.MuteUserAsync(targetUser, $"Automatic permanent mute after {warnsSinceThreshold} warnings in the past {acceptedThreshold} {thresholdSpan}.", modUser.Id, guild, channel);
             }
 
             return warning;

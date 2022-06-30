@@ -51,7 +51,7 @@
                     MemberPunishment mute = entry.Value;
                     if (DateTime.Now > mute.ExpireTime)
                     {
-                        await MuteHelpers.UnmuteUserAsync(await Program.discord.GetUserAsync(mute.MemberId), "Mute has naturally expired.", false);
+                        await PunishmentHelpers.UnmuteUserAsync(await Program.discord.GetUserAsync(mute.MemberId), "Mute has naturally expired.", false);
                         success = true;
                     }
                 }

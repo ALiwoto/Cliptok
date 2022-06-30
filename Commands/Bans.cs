@@ -9,24 +9,14 @@
             DateTime? actionTime = DateTime.Now;
             DateTime? expireTime = actionTime + banDuration;
             DiscordMember moderator = await guild.GetMemberAsync(moderatorId);
-
+            DiscordMessage dmMessage = default;
+            DiscordMessage chatMessage = default;
+            
             if (banDuration == default)
             {
                 permaBan = true;
                 expireTime = null;
             }
-
-            MemberPunishment newBan = new()
-            {
-                MemberId = targetUserId,
-                ModId = moderatorId,
-                ServerId = guild.Id,
-                ExpireTime = expireTime,
-                ActionTime = actionTime,
-                Reason = reason
-            };
-
-            await Program.db.HashSetAsync("bans", targetUserId, JsonConvert.SerializeObject(newBan));
 
             try
             {
@@ -35,16 +25,16 @@
                 {
                     if (appealable)
                     {
-                        await targetMember.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} You have been banned from **{guild.Name}**!\nReason: **{reason}**\nYou can appeal the ban here: <{Program.cfgjson.AppealLink}>");
+                        dmMessage = await targetMember.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} You have been banned from **{guild.Name}**!\nReason: **{reason}**\nYou can appeal the ban here: <{Program.cfgjson.AppealLink}>");
                     }
                     else
                     {
-                        await targetMember.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} You have been permanently banned from **{guild.Name}**!\nReason: **{reason}**");
+                        dmMessage = await targetMember.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} You have been permanently banned from **{guild.Name}**!\nReason: **{reason}**");
                     }
                 }
                 else
                 {
-                    await targetMember.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} You have been banned from **{guild.Name}** for {TimeHelpers.TimeToPrettyFormat(banDuration, false)}!\nReason: **{reason}**\nBan expires: <t:{TimeHelpers.ToUnixTimestamp(expireTime)}:R>");
+                    dmMessage = await targetMember.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} You have been banned from **{guild.Name}** for {TimeHelpers.TimeToPrettyFormat(banDuration, false)}!\nReason: **{reason}**\nBan expires: <t:{TimeHelpers.ToUnixTimestamp(expireTime)}:R>");
                 }
             }
             catch
@@ -82,8 +72,47 @@
             {
                 return false;
             }
-            return true;
 
+            if (channel is not null)
+            {
+
+                string messageSafeReason = reason.Replace("`", "\\`").Replace("*", "\\*");
+                if (banDuration == default)
+                    chatMessage = await channel.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} <@{targetUserId}> has been banned: **{messageSafeReason}**");
+                else
+                    chatMessage = await channel.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} <@{targetUserId}> has been banned for **{TimeHelpers.TimeToPrettyFormat(banDuration, false)}**: **{messageSafeReason}**");
+            }
+            
+            MemberPunishment newBan = new()
+            {
+                MemberId = targetUserId,
+                ModId = moderatorId,
+                ServerId = guild.Id,
+                ExpireTime = expireTime,
+                ActionTime = actionTime,
+                Reason = reason
+            };
+
+            if (dmMessage != default)
+            {
+                newBan.DmMessageReference = new()
+                {
+                    MessageId = dmMessage.Id,
+                    ChannelId = dmMessage.ChannelId
+                };
+            }
+
+            if (chatMessage != default)
+            {
+                newBan.ContextMessageReference = new()
+                {
+                    MessageId = chatMessage.Id,
+                    ChannelId = chatMessage.ChannelId
+                };
+            }
+
+            await Program.db.HashSetAsync("bans", targetUserId, JsonConvert.SerializeObject(newBan));
+            return true;
         }
 
         public static async Task FindModmailThreadAndSendMessage(DiscordGuild guild, string searchText, string messageToSend)
@@ -183,45 +212,37 @@
             await loading.DeleteAsync();
         }
 
+        [Command("editban")]
+        [Description("Edit the details of a ban. Updates the DM to the user, among other things.")]
+        [HomeServer, RequireHomeserverPerm(ServerPermLevel.Moderator), RequirePermissions(Permissions.BanMembers)]
+        public async Task EditBanCmd(CommandContext ctx,
+            [Description("The user you wish to edit the ban of. Accepts many formats")] DiscordUser targetUser,
+            [RemainingText, Description("The time and reason for the ban. e.g. '14d trolling' NOTE: Add 'appeal' to the start of the reason to include an appeal link")] string timeAndReason = "No reason specified."
+        )
+        {
+            (TimeSpan banDuration, string reason, bool appealable) = PunishmentHelpers.UnpackTimeAndReason(timeAndReason, ctx.Message.Timestamp.DateTime);
+
+            if (!Program.db.HashExists("bans", targetUser.Id))
+            {
+                await ctx.RespondAsync($"{Program.cfgjson.Emoji.Error} There's no record of a ban for that user! Please make sure they're banned or you got the right user.");
+                return;
+            }
+
+            var ban = JsonConvert.DeserializeObject<MemberPunishment>(await Program.db.HashGetAsync("bans", targetUser.Id));
+            
+            
+        }
+
         [Command("ban")]
         [Aliases("tempban", "bonk")]
         [Description("Bans a user that you have permission to ban, deleting all their messages in the process. See also: bankeep.")]
         [HomeServer, RequireHomeserverPerm(ServerPermLevel.Moderator), RequirePermissions(Permissions.BanMembers)]
         public async Task BanCmd(CommandContext ctx,
-     [Description("The user you wish to ban. Accepts many formats")] DiscordUser targetMember,
-     [RemainingText, Description("The time and reason for the ban. e.g. '14d trolling' NOTE: Add 'appeal' to the start of the reason to include an appeal link")] string timeAndReason = "No reason specified.")
+            [Description("The user you wish to ban. Accepts many formats")] DiscordUser targetMember,
+            [RemainingText, Description("The time and reason for the ban. e.g. '14d trolling' NOTE: Add 'appeal' to the start of the reason to include an appeal link")] string timeAndReason = "No reason specified."
+        )
         {
-            bool appealable = false;
-            bool timeParsed = false;
-
-            TimeSpan banDuration = default;
-            string possibleTime = timeAndReason.Split(' ').First();
-            try
-            {
-                banDuration = HumanDateParser.HumanDateParser.Parse(possibleTime).Subtract(ctx.Message.Timestamp.DateTime);
-                timeParsed = true;
-            }
-            catch
-            {
-                // keep default
-            }
-
-            string reason = timeAndReason;
-
-            if (timeParsed)
-            {
-                int i = reason.IndexOf(" ") + 1;
-                reason = reason[i..];
-            }
-
-            if (timeParsed && possibleTime == reason)
-                reason = "No reason specified.";
-
-            if (reason.Length > 6 && reason[..7].ToLower() == "appeal ")
-            {
-                appealable = true;
-                reason = reason[7..^0];
-            }
+            (TimeSpan banDuration, string reason, bool appealable) = PunishmentHelpers.UnpackTimeAndReason(timeAndReason, ctx.Message.Timestamp.DateTime);            
 
             DiscordMember member;
             try
@@ -259,11 +280,6 @@
                     return;
                 }
             }
-            reason = reason.Replace("`", "\\`").Replace("*", "\\*");
-            if (banDuration == default)
-                await ctx.Channel.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} {targetMember.Mention} has been banned: **{reason}**");
-            else
-                await ctx.Channel.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} {targetMember.Mention} has been banned for **{TimeHelpers.TimeToPrettyFormat(banDuration, false)}**: **{reason}**");
         }
 
         /// I CANNOT find a way to do this as alias so I made it a separate copy of the command.
@@ -272,40 +288,11 @@
         [Aliases("bansave")]
         [Description("Bans a user but keeps their messages around."), HomeServer, RequireHomeserverPerm(ServerPermLevel.Moderator), RequirePermissions(Permissions.BanMembers)]
         public async Task BankeepCmd(CommandContext ctx,
-        [Description("The user you wish to ban. Accepts many formats")] DiscordUser targetMember,
-        [RemainingText, Description("The time and reason for the ban. e.g. '14d trolling' NOTE: Add 'appeal' to the start of the reason to include an appeal link")] string timeAndReason = "No reason specified.")
+            [Description("The user you wish to ban. Accepts many formats")] DiscordUser targetMember,
+            [RemainingText, Description("The time and reason for the ban. e.g. '14d trolling' NOTE: Add 'appeal' to the start of the reason to include an appeal link")] string timeAndReason = "No reason specified."
+        )
         {
-            bool appealable = false;
-            bool timeParsed = false;
-
-            TimeSpan banDuration = default;
-            string possibleTime = timeAndReason.Split(' ').First();
-            try
-            {
-                banDuration = HumanDateParser.HumanDateParser.Parse(possibleTime).Subtract(ctx.Message.Timestamp.DateTime);
-                timeParsed = true;
-            }
-            catch
-            {
-                // keep default
-            }
-
-            string reason = timeAndReason;
-
-            if (timeParsed)
-            {
-                int i = reason.IndexOf(" ") + 1;
-                reason = reason[i..];
-            }
-
-            if (timeParsed && possibleTime == reason)
-                reason = "No reason specified.";
-
-            if (reason.Length > 6 && reason[..7].ToLower() == "appeal ")
-            {
-                appealable = true;
-                reason = reason[7..^0];
-            }
+            (TimeSpan banDuration, string reason, bool appealable) = PunishmentHelpers.UnpackTimeAndReason(timeAndReason, ctx.Message.Timestamp.DateTime);
 
             DiscordMember member;
             try
@@ -343,11 +330,6 @@
                     return;
                 }
             }
-            reason = reason.Replace("`", "\\`").Replace("*", "\\*");
-            if (banDuration == default)
-                await ctx.Channel.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} {targetMember.Mention} has been banned: **{reason}**");
-            else
-                await ctx.Channel.SendMessageAsync($"{Program.cfgjson.Emoji.Banned} {targetMember.Mention} has been banned for **{TimeHelpers.TimeToPrettyFormat(banDuration, false)}**: **{reason}**");
         }
 
         [Command("unban")]

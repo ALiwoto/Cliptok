@@ -25,13 +25,13 @@ namespace Cliptok.Commands
 
             if ((await Program.db.HashExistsAsync("mutes", targetUser.Id)) || (member != default && member.Roles.Contains(mutedRole)))
             {
-                await MuteHelpers.UnmuteUserAsync(targetUser, reason);
+                await PunishmentHelpers.UnmuteUserAsync(targetUser, reason);
                 await ctx.RespondAsync($"{Program.cfgjson.Emoji.Information} Successfully unmuted **{targetUser.Username}#{targetUser.Discriminator}**.");
             }
             else
                 try
                 {
-                    await MuteHelpers.UnmuteUserAsync(targetUser, reason);
+                    await PunishmentHelpers.UnmuteUserAsync(targetUser, reason);
                     await ctx.RespondAsync($"{Program.cfgjson.Emoji.Warning} According to Discord that user is not muted, but I tried to unmute them anyway. Hope it works.");
                 }
                 catch (Exception e)
@@ -66,32 +66,10 @@ namespace Cliptok.Commands
             }
 
             await ctx.Message.DeleteAsync();
-            bool timeParsed = false;
 
-            TimeSpan muteDuration = default;
-            string possibleTime = timeAndReason.Split(' ').First();
-            string reason = timeAndReason;
-
-            try
-            {
-                muteDuration = HumanDateParser.HumanDateParser.Parse(possibleTime).Subtract(ctx.Message.Timestamp.DateTime);
-                timeParsed = true;
-            }
-            catch
-            {
-                // keep default
-            }
-
-            if (timeParsed)
-            {
-                int i = reason.IndexOf(" ") + 1;
-                reason = reason[i..];
-            }
-
-            if (timeParsed && possibleTime == reason)
-                reason = "No reason specified.";
-
-            _ = MuteHelpers.MuteUserAsync(targetUser, reason, ctx.User.Id, ctx.Guild, ctx.Channel, muteDuration, true);
+            (TimeSpan muteDuration, string reason, _) = PunishmentHelpers.UnpackTimeAndReason(timeAndReason, ctx.Message.Timestamp.DateTime);
+            
+            _ = PunishmentHelpers.MuteUserAsync(targetUser, reason, ctx.User.Id, ctx.Guild, ctx.Channel, muteDuration, true);
         }
     }
 }

@@ -44,7 +44,7 @@
                 }
             }
 
-            await MuteHelpers.MuteUserAsync(targetUser, reason, ctx.User.Id, ctx.Guild, ctx.Channel, muteDuration, true);
+            await PunishmentHelpers.MuteUserAsync(targetUser, reason, ctx.User.Id, ctx.Guild, ctx.Channel, muteDuration, true);
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().WithContent("Command completed successfully."));
         }
 
@@ -75,13 +75,13 @@
 
             if ((await Program.db.HashExistsAsync("mutes", targetUser.Id)) || (member != default && member.Roles.Contains(mutedRole)))
             {
-                await MuteHelpers.UnmuteUserAsync(targetUser, reason);
+                await PunishmentHelpers.UnmuteUserAsync(targetUser, reason);
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().WithContent($"{Program.cfgjson.Emoji.Information} Successfully unmuted **{targetUser.Username}#{targetUser.Discriminator}**."));
             }
             else
                 try
                 {
-                    await MuteHelpers.UnmuteUserAsync(targetUser, reason);
+                    await PunishmentHelpers.UnmuteUserAsync(targetUser, reason);
                     await ctx.EditResponseAsync(new DiscordWebhookBuilder().WithContent($"{Program.cfgjson.Emoji.Warning} According to Discord that user is not muted, but I tried to unmute them anyway. Hope it works."));
                 }
                 catch (Exception e)
